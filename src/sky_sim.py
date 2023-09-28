@@ -9,8 +9,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import argparse
+import logging
 
 BASEPATH = '/Users/rmostoghiupaun/2023-ASA-ECR-Python/day1/skysim_module/data/'
+
+# configure logging
+logging.basicConfig(format="%(name)s:%(levelname)s %(message)s", level=logging.INFO)
+mylogger = logging.getLogger("sky_sim")
 
 
 def get_radec(ref_ra: str, ref_dec: str) -> list:
@@ -24,16 +29,25 @@ def get_radec(ref_ra: str, ref_dec: str) -> list:
     Returns:
         list: list containg the RA, DEC of Andromeda
     """
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug("Fetching reference coordinates")
 
     REF_RA  = ref_ra
     REF_DEC = ref_dec
 
-    degrees, minutes, seconds = REF_RA.split(':')
+    degrees, minutes, seconds = REF_DEC.split(':')
     dec = int(degrees)+int(minutes)/60+float(seconds)/3600
 
-    hours, minutes, seconds = REF_DEC.split(':')
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"DEC is: {degrees} deg, {minutes} min, {seconds} sec -> {dec} degrees")
+
+    hours, minutes, seconds = REF_RA.split(':')
     ra = 15*(int(hours)+int(minutes)/60+float(seconds)/3600)
     ra = ra/np.cos(dec*np.pi/180)
+
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"RA is: {hours} hrs, {minutes} min, {seconds} sec -> {ra} degrees")
+
     return ra, dec
 
 def clip_to_radius(ras: list, decs: list, ref_ra: float, ref_dec: float, radius: float) -> list:
@@ -51,6 +65,9 @@ def clip_to_radius(ras: list, decs: list, ref_ra: float, ref_dec: float, radius:
         list: clipped right ascensions and declinations
     """
 
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Clipping the positions to a radius of value {radius}")
+
     ra_out = []
     dec_out = []
 
@@ -61,6 +78,9 @@ def clip_to_radius(ras: list, decs: list, ref_ra: float, ref_dec: float, radius:
         if (ras[i]-ref_ra)**2 + (decs[i]-ref_dec)**2 < radius**2:
             ra_out.append(ras[i])
             dec_out.append(decs[i])
+
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Positions clipped")
 
     return ra_out, dec_out
 
@@ -79,6 +99,9 @@ def make_stars(ref_ra: float, ref_dec: float, nsrc: int, radius: float) -> list:
         list: list containing random RAs and DECs
     """
 
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Generating synthetic star positions")
+
     ras = []
     decs = []
     for _ in range(nsrc):
@@ -87,6 +110,9 @@ def make_stars(ref_ra: float, ref_dec: float, nsrc: int, radius: float) -> list:
 
     # apply our filter
     ras, decs = clip_to_radius(ras,decs,ref_ra,ref_dec,radius)
+
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Synthetic star positions created")
 
     return ras, decs
 
@@ -100,6 +126,10 @@ def save_positions_to_file(ras: list, decs: list):
     """
 
     # now write these to a csv file for use by my other program
+
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Writing synthetic star positions to a catalog")
+
     with open(BASEPATH + 'catalog.csv','w', encoding="utf8") as file:
         print('id,RA,DEC', file=file)
 
@@ -109,6 +139,9 @@ def save_positions_to_file(ras: list, decs: list):
         for i in range(len(ras)):
             print(f"{i:07d},{ras[i]:12f},{decs[i]:12f}", file=file)
 
+    if mylogger.isEnabledFor(logging.DEBUG):
+        mylogger.debug(f"Catalog written")
+
 def skysim_parser():
     """
     skysim_parser configure the argparse for skysim
@@ -117,12 +150,15 @@ def skysim_parser():
         ArgumentParser: the parser of the module
     """
     parser = argparse.ArgumentParser(prog='sky_sim', prefix_chars='-')
+
     parser.add_argument('--ra', dest = 'ra', type=float, default=None,
                         help="Central ra (degrees) for the simulation location")
     parser.add_argument('--dec', dest = 'dec', type=float, default=None,
                         help="Central dec (degrees) for the simulation location")
     parser.add_argument('--out', dest='out', type=str, default=BASEPATH + 'catalog.csv',
                         help='destination for the output catalog')
+    # parser.add_argument('--log-level', dest='log_level', type=str, default='INFO',
+    #                     help='log level for logging. Available levels: DEBUG, INFO, WARNING, ERROR, CRITICAL')
     return parser
 
 
@@ -136,7 +172,6 @@ if __name__ == "__main__":
     ANDROMEDA_DEC = '00:42:44.3'
     ANDROMEDA_RA = '41:16:09'
 
-
     parser = skysim_parser()
     options = parser.parse_args()
 
@@ -145,6 +180,11 @@ if __name__ == "__main__":
     else:
         central_ra = options.ra
         central_dec = options.dec
+
+    # if None in options.log_level or ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] not in options.log_level:
+    #     logging.basicConfig(logging.INFO)
+    # else:
+    #     logging.basicConfig(logging.log_level)
 
     ras, decs = make_stars(central_ra, central_dec, NSRC, RADIUS)
 
@@ -157,7 +197,7 @@ if __name__ == "__main__":
         for i in range(len(ras)):
             print(f"{i:07d}, {ras[i]:12f}, {decs[i]:12f}", file=f)
 
-    print(f"Wrote {options.out}")
+    mylogger.info(f"Wrote {options.out}")
 
     # plot it
     starcatalog = pd.read_csv(BASEPATH + 'catalog.csv', sep=",")
@@ -168,4 +208,4 @@ if __name__ == "__main__":
     plt.ylabel('DEC')
     plt.tight_layout()
     plt.savefig(BASEPATH + 'skysim_distrib.png')
-    print("Plotted the distribution")
+    mylogger.info("Plotted the distribution")
